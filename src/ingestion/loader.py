@@ -35,7 +35,7 @@ def quality_check(doc) -> dict:
         "total_chars": len(t),
         "reward_mentions": (
             low.count("x points")
-            + low.count("% cash back")
+            + low.count("%cashback")
             + low.count("miles per")
             + low.count("points per")
             + low.count("per $1")
