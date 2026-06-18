@@ -1,0 +1,10 @@
+# PDF ingestion
+PyMuPDF==1.27.2.3
+
+# Config / env loading
+python-dotenv==1.2.2
+
+# Chunking & embeddings (RAG pipeline)
+langchain-text-splitters==1.1.2
+langchain-experimental==0.4.2
+langchain-google-genai==4.2.5

@@ -2,7 +2,16 @@ import os
 import sys
 from src.ingestion.loader import load_card_pdf, quality_check
 
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+from dotenv import load_dotenv
+
+load_dotenv()  # reads GOOGLE_API_KEY from .env into the environment
+
+from src.ingestion.loader import load_card_pdf
+from src.ingestion.chunker import benchmark_chunking
 
 CARDS = [
     {
@@ -34,3 +43,4 @@ for c in CARDS:
     )
     print(f"\n=== {c['card_name']} ===")
     quality_check(doc)
+    benchmark_chunking(doc.raw_text)
