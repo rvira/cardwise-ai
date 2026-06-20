@@ -10,3 +10,6 @@ venv/
 
 # Generated vector store
 chroma_db/
+
+# Streamlit secrets (never commit; config.toml is fine)
+.streamlit/secrets.toml

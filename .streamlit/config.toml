@@ -1,0 +1,8 @@
+[server]
+# Disable the local-sources module watcher. Streamlit otherwise introspects
+# every module in sys.modules on each rerun; transformers (pulled in
+# transitively by chromadb/langchain) lazily imports a torchvision-dependent
+# submodule on attribute access, which crashes with
+# "ModuleNotFoundError: No module named 'torchvision'".
+# This app uses Gemini only and needs none of the torch stack.
+fileWatcherType = "none"
