@@ -9,6 +9,12 @@ answer drawn only from the ingested PDFs, with the card name cited.
 
 ---
 
+## Demo
+
+<p align="center">
+  <img src="docs/demo.gif" alt="CardWise answering a credit-card question with cited sources" width="100%">
+</p>
+
 ## How it works
 
 <p align="center">

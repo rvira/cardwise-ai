@@ -48,6 +48,23 @@ def answer(question: str):
             yield "⚠️ Something went wrong answering that. Please try again."
 
 
+def render_streaming_answer(question: str) -> str:
+    """ChatGPT/Gemini-style: show a 'Thinking…' loader until the first token
+    arrives (retrieval + LLM latency happen here), then stream the rest into a
+    single placeholder with a typing cursor."""
+    gen = answer(question)
+    with st.spinner("Thinking…"):
+        first = next(gen, "")  # block under the loader until the first chunk
+    placeholder = st.empty()
+    full = first
+    placeholder.markdown(full + " ▌")
+    for chunk in gen:
+        full += chunk
+        placeholder.markdown(full + " ▌")
+    placeholder.markdown(full)  # drop the cursor when done
+    return full
+
+
 st.set_page_config(page_title="CardWise — Credit Card Advisor", page_icon="💳")
 st.title("💳 CardWise")
 st.caption("Ask about the cards in the knowledge base. Answers are grounded in the official card documents, with citations.")
@@ -77,5 +94,5 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
     with st.chat_message("assistant"):
-        reply = st.write_stream(answer(prompt))
+        reply = render_streaming_answer(prompt)
     st.session_state.messages.append({"role": "assistant", "content": reply})
