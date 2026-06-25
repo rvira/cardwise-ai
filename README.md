@@ -89,3 +89,47 @@ PYTHONPATH=. .venv/bin/streamlit run app.py
 # Or run sample queries from the terminal
 PYTHONPATH=. .venv/bin/python -m src.scripts.run_queries
 ```
+
+## Evaluation
+
+The RAG pipeline is scored with **RAGAS** using `gemini-2.5-flash` as the judge and
+`gemini-embedding-001` for the embedding-based metric. Each question is scored across four
+metrics:
+
+| Metric | What it measures | Needs |
+|---|---|---|
+| **Faithfulness** | Is every claim in the answer supported by the retrieved context? (anti-hallucination) | answer + contexts |
+| **Answer relevancy** | Does the answer actually address the question asked? | question + answer |
+| **Context precision** | Of the chunks retrieved, how many are actually relevant? (retrieval signal-to-noise) | question + contexts + reference |
+| **Context recall** | Did retrieval surface all the context needed to cover the reference answer? | question + contexts + reference |
+
+All four range from **0 to 1** (higher is better).
+
+### Baseline scores
+
+Latest run:
+
+| Metric | Score |
+|---|---|
+| Faithfulness | 1.000 |
+| Answer relevancy | 0.965 |
+| Context recall | 1.000 |
+| Context precision | 1.000  |
+
+```bash
+# Run the baseline eval (defaults to 1 question to fit the free-tier daily quota)
+PYTHONPATH=. .venv/bin/python -m src.evaluation.eval
+```
+
+### Handling Gemini 429 (rate-limit / quota) errors
+
+Free-tier Gemini caps `gemini-2.5-flash` at **5 requests/minute** and **20 requests/day**, and
+a single question costs several judge calls. Two measures keep a run alive against these limits:
+
+- **Retry with wait** — on a `429 RESOURCE_EXHAUSTED`, the eval parses the API's suggested
+  `retryDelay`, sleeps that long, and retries the metric (a few attempts) so it rides out the
+  per-minute window instead of failing.
+- **Per-sample isolation + question limit** — a metric that still can't complete is recorded
+  as `n/a` and skipped rather than aborting the whole run, and only the first
+  `DEFAULT_EVAL_LIMIT` questions are evaluated by default to stay under the daily cap. Raise the
+  `limit` argument once a billed key lifts the quotas.
