@@ -37,3 +37,22 @@ class HybridRetriever:
         return [
             v["doc"] for v in sorted(combined.values(), key=lambda x: -x["score"])[:k]
         ]
+
+
+def stratified_retrieve(
+    hybrid_retriever, query: str, card_names: List[str], k_per_card: int = 3
+):
+    all_results = []
+    for card in card_names:
+        card_chunks = [
+            c
+            for c in hybrid_retriever.all_chunks
+            if c.metadata.get("card_name") == card
+        ]
+        if not card_chunks:
+            continue
+        card_retriever = HybridRetriever(
+            hybrid_retriever.vectorstore, card_chunks, alpha=hybrid_retriever.alpha
+        )
+        all_results.extend(card_retriever.retrieve(query, k=k_per_card))
+    return all_results
