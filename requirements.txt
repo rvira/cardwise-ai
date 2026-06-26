@@ -16,3 +16,10 @@ chromadb==1.5.9
 
 # Frontend (demo)
 streamlit==1.58.0
+
+# Retrieval (experimental hybrid BM25 + semantic search)
+rank-bm25==0.2.2
+
+# Evaluation (RAGAS scored via Gemini's OpenAI-compatible endpoint)
+ragas==0.4.3
+openai==2.30.0

@@ -6,6 +6,7 @@ Run from the project root:
 Prerequisite: build the vector store first with
     python -m src.scripts.ingest_all
 """
+
 from dotenv import load_dotenv
 
 # Load GOOGLE_API_KEY from .env before any Gemini client is built — never hardcoded.
@@ -14,6 +15,7 @@ load_dotenv()
 import streamlit as st
 
 from src.rag.chain import build_card_rag_chain
+from src.retrieval.retriever import as_runnable, build_hybrid_retriever
 from src.vectorstore.embedder import load_vectorstore
 
 # Keep questions short enough that an unbounded paste can't be sent to the model.
@@ -25,49 +27,80 @@ EXAMPLE_QUESTIONS = [
     "What is the annual fee for HDFC Millennia?",
 ]
 
+# Retrieval methods selectable from the sidebar (label → internal mode).
+RETRIEVAL_MODES = {
+    "MMR (semantic + diversity)": "mmr",
+    "Hybrid (BM25 + semantic)": "hybrid",
+}
+
 
 @st.cache_resource(show_spinner="Loading the card knowledge base…")
-def get_chain():
-    """Build the RAG chain once and reuse it across reruns/sessions."""
-    return build_card_rag_chain(load_vectorstore())
+def get_chain(mode: str = "mmr"):
+    """Build (and cache) the RAG chain for a retrieval mode. Cached per mode, so
+    each method builds once and is reused across reruns/sessions.
+
+    - 'mmr'    → the default MMR retriever over the store.
+    - 'hybrid' → BM25 (keyword) + semantic retriever; loads all chunks once to
+                 build the BM25 index, better for exact-value lookups.
+    """
+    vs = load_vectorstore()
+    if mode == "hybrid":
+        return build_card_rag_chain(
+            vs, retriever=as_runnable(build_hybrid_retriever(vs))
+        )
+    return build_card_rag_chain(vs)
 
 
-def answer(question: str):
+def answer(question: str, mode: str = "mmr"):
     """Stream the model's answer for a question, with friendly error handling."""
-    chain = get_chain()
+    chain = get_chain(mode)
     try:
-        # chain.stream yields string chunks (StrOutputParser at the tail).
         yield from chain.stream(question)
-    except Exception as ex:  # noqa: BLE001 — surface a safe message, log the rest
+    except Exception as ex:
         msg = str(ex)
         if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
             yield "⚠️ The service is busy (rate limit reached). Please try again in a minute."
         else:
-            # Generic message to the UI; full error stays in the server logs.
             print(f"[run_error] {type(ex).__name__}: {ex}")
             yield "⚠️ Something went wrong answering that. Please try again."
 
 
-def render_streaming_answer(question: str) -> str:
+def render_streaming_answer(question: str, mode: str = "mmr") -> str:
     """ChatGPT/Gemini-style: show a 'Thinking…' loader until the first token
     arrives (retrieval + LLM latency happen here), then stream the rest into a
     single placeholder with a typing cursor."""
-    gen = answer(question)
+    gen = answer(question, mode)
     with st.spinner("Thinking…"):
-        first = next(gen, "")  # block under the loader until the first chunk
+        first = next(gen, "")
     placeholder = st.empty()
     full = first
     placeholder.markdown(full + " ▌")
     for chunk in gen:
         full += chunk
         placeholder.markdown(full + " ▌")
-    placeholder.markdown(full)  # drop the cursor when done
+    placeholder.markdown(full)
     return full
 
 
 st.set_page_config(page_title="CardWise — Credit Card Advisor", page_icon="💳")
 st.title("💳 CardWise")
-st.caption("Ask about the cards in the knowledge base. Answers are grounded in the official card documents, with citations.")
+st.caption(
+    "Ask about the cards in the knowledge base. Answers are grounded in the official card documents, with citations."
+)
+
+# Sidebar: switch the retrieval method live to compare answers.
+with st.sidebar:
+    st.header("Retrieval")
+    mode_label = st.radio(
+        "Method",
+        list(RETRIEVAL_MODES),
+        index=0,
+        help=(
+            "MMR: semantic search with diversity (default). "
+            "Hybrid: BM25 keyword + semantic — better for exact values like fees/rates."
+        ),
+    )
+    retrieval_mode = RETRIEVAL_MODES[mode_label]
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -94,5 +127,5 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
     with st.chat_message("assistant"):
-        reply = render_streaming_answer(prompt)
+        reply = render_streaming_answer(prompt, retrieval_mode)
     st.session_state.messages.append({"role": "assistant", "content": reply})
