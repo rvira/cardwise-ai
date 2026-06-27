@@ -12,6 +12,7 @@
   <img alt="RAGAS" src="https://img.shields.io/badge/RAGAS-evaluation-6E56CF">
   <img alt="Streamlit" src="https://img.shields.io/badge/Streamlit-frontend-FF4B4B?logo=streamlit&logoColor=white">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <a href="https://cardwise-ai.streamlit.app/"><img alt="Live demo" src="https://img.shields.io/badge/Live%20demo-cardwise--ai.streamlit.app-FF4B4B?logo=streamlit&logoColor=white"></a>
 </p>
 
 Ask things like *"What is the cashback rate for Axis ACE, and any exclusions?"* and get an
@@ -36,6 +37,8 @@ answer drawn only from the ingested PDFs, with the card name cited.
 ---
 
 ## Demo
+
+**▶ Try it live: [cardwise-ai.streamlit.app](https://cardwise-ai.streamlit.app/)**
 
 <p align="center">
   <img src="docs/demo.gif" alt="CardWise answering a credit-card question with cited sources" width="100%">
@@ -87,7 +90,7 @@ cardwise-ai/
 │   │   └── retriever.py         # experimental hybrid BM25 + semantic retriever
 │   ├── evaluation/
 │   │   ├── eval.py              # RAGAS baseline eval (Gemini judge)
-│   │   └── numeric_validator.py # numeric-claim extraction (stub — Week 3)
+│   │   └── numeric_validator.py # numeric-claim extraction
 │   └── scripts/
 │       ├── ingest_all.py        # build the vector store from all cards
 │       ├── run_queries.py       # run sample queries from the CLI
