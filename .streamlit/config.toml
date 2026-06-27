@@ -6,3 +6,12 @@
 # "ModuleNotFoundError: No module named 'torchvision'".
 # This app uses Gemini only and needs none of the torch stack.
 fileWatcherType = "none"
+
+[theme]
+# Polished light theme for the CardWise advisor UI.
+base = "light"
+primaryColor = "#6C5CE7"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F2FF"
+textColor = "#1E1B2E"
+font = "sans serif"
