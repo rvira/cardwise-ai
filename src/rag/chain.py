@@ -17,30 +17,38 @@ def _page_label(doc) -> str:
     return f" | p.{m.group(1)}" if m else ""
 
 
-def build_card_rag_chain(vectorstore, retriever=None):
-    # Default retriever = MMR over the store. Pass a custom Runnable (e.g. the
-    # hybrid BM25+semantic retriever via retriever.as_runnable) to override.
-    if retriever is None:
-        retriever = build_default_retriever(vectorstore)
+def format_with_citations(docs):
+    """Fold retrieved docs into the numbered, cited context block the prompt
+    expects. Shared by the full chain and by callers that retrieve separately
+    (e.g. the UI, which also wants the raw docs to display)."""
+    return "\n\n".join(
+        f"[Source {i+1} | {d.metadata.get('card_name','?')}{_page_label(d)}]\n{d.page_content}"
+        for i, d in enumerate(docs)
+    )
+
+
+def build_answer_chain():
+    """The prompt → LLM → text half of the pipeline, taking a pre-built
+    {context, question} dict. Lets callers retrieve docs themselves (to show
+    citations) and still stream the answer through the same prompt/model."""
     prompt = PromptTemplate(
         input_variables=["context", "question"], template=CARD_ADVISOR_PROMPT
     )
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash", temperature=0.0
     )  # temp=0: non-negotiable
+    return prompt | llm | StrOutputParser()
 
-    def format_with_citations(docs):
-        return "\n\n".join(
-            f"[Source {i+1} | {d.metadata.get('card_name','?')}{_page_label(d)}]\n{d.page_content}"
-            for i, d in enumerate(docs)
-        )
 
+def build_card_rag_chain(vectorstore, retriever=None):
+    # Default retriever = MMR over the store. Pass a custom Runnable (e.g. the
+    # hybrid BM25+semantic retriever via retriever.as_runnable) to override.
+    if retriever is None:
+        retriever = build_default_retriever(vectorstore)
     return (
         {
             "context": retriever | format_with_citations,
             "question": RunnablePassthrough(),
         }
-        | prompt
-        | llm
-        | StrOutputParser()
+        | build_answer_chain()
     )
