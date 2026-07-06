@@ -12,6 +12,7 @@ from src.ingestion.loader import CardDocument, find_rates, quality_check
 def _doc(raw_text: str) -> CardDocument:
     return CardDocument(
         card_name="Test Card",
+        card_id="test_card",
         issuer="Test Bank",
         card_type="cashback",
         annual_fee=499,

@@ -23,9 +23,11 @@ def build_vectorstore(
     chunks: List[LCDoc], card_meta: dict, persist_dir="chroma_db"
 ) -> Chroma:
     # Inject structured metadata — this enables filter-by-card in Week 2
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
         chunk.metadata.update(
             {
+                "card_id": card_meta["card_id"],
+                "chunk_id": f"{card_meta['card_id']}::{i}",
                 "card_name": card_meta["card_name"],  # 'Chase Sapphire Reserve'
                 "issuer": card_meta["issuer"],  # 'Chase'
                 "card_type": card_meta["card_type"],  # 'travel'

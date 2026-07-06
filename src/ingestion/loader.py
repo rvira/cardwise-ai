@@ -22,12 +22,13 @@ class CardDocument:
     card_name: str
     issuer: str
     card_type: str  # 'travel' | 'cashback' | 'dining'
+    card_id: str
     annual_fee: int
     raw_text: str
     source_path: str
 
 
-def load_card_pdf(pdf_path, card_name, issuer, card_type, annual_fee):
+def load_card_pdf(pdf_path, card_name, card_id, issuer, card_type, annual_fee):
     doc = fitz.open(pdf_path)
     pages = []
     for i, page in enumerate(doc):
@@ -35,6 +36,7 @@ def load_card_pdf(pdf_path, card_name, issuer, card_type, annual_fee):
         pages.append(f"[PAGE {i+1}]\n{text}")
     return CardDocument(
         card_name=card_name,
+        card_id=card_id,
         issuer=issuer,
         card_type=card_type,
         annual_fee=annual_fee,
@@ -47,6 +49,7 @@ CARDS = [
     {
         "pdf": "data/raw/sbi_simplyclick.pdf",
         "card_name": "SBI SimplyCLICK",
+        "card_id": "sbi_simplyclick",
         "issuer": "SBI Card",
         "card_type": "online-shopping",
         "annual_fee": 499,
@@ -54,6 +57,7 @@ CARDS = [
     {
         "pdf": "data/raw/axis_ace.pdf",
         "card_name": "Axis ACE",
+        "card_id": "axis_ace",
         "issuer": "Axis Bank",
         "card_type": "cashback",
         "annual_fee": 499,
@@ -61,6 +65,7 @@ CARDS = [
     {
         "pdf": "data/raw/hdfc_millennia.pdf",
         "card_name": "HDFC Millennia",
+        "card_id": "hdfc_millennia",
         "issuer": "HDFC Bank",
         "card_type": "cashback",
         "annual_fee": 1000,
@@ -75,6 +80,7 @@ def load_card(card: dict) -> CardDocument:
     return load_card_pdf(
         card["pdf"],
         card["card_name"],
+        card["card_id"],
         card["issuer"],
         card["card_type"],
         card["annual_fee"],

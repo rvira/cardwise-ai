@@ -18,21 +18,31 @@ class HybridRetriever:
         self.alpha = alpha
         self.bm25 = BM25Okapi([tokenize(c.page_content) for c in all_chunks])
 
-    def retrieve(self, query: str, k: int = 6):
-        semantic = self.vectorstore.similarity_search_with_relevance_scores(
-            query, k=k * 2
+    def _candidates(self, query: str, fetch_k: int):
+        """Shared candidate generation for both fusion strategies.
+        Returns (dense, sparse) as ranked lists of (doc, score)."""
+        dense = self.vectorstore.similarity_search_with_relevance_scores(
+            query, k=fetch_k
         )
         bm25_scores = self.bm25.get_scores(tokenize(query))
-        bm25_ranked = sorted(enumerate(bm25_scores), key=lambda x: -x[1])[: k * 2]
+        sparse = [
+            (self.all_chunks[idx], score)
+            for idx, score in sorted(enumerate(bm25_scores), key=lambda x: -x[1])[
+                :fetch_k
+            ]
+        ]
+        return dense, sparse
 
+    def retrieve(self, query: str, k: int = 6):
+        dense, sparse = self._candidates(query, fetch_k=k * 2)
         combined = {}
-        for doc, score in semantic:
-            key = doc.page_content[:100]
+        for doc, score in dense:
+            key = doc.metadata.get("chunk_id") or doc.page_content[:100]
             combined[key] = {"doc": doc, "score": self.alpha * score}
-        for idx, score in bm25_ranked:
-            doc = self.all_chunks[idx]
-            key = doc.page_content[:100]
-            norm = score / (max(bm25_scores) + 1e-6)
+        max_bm25 = max((s for _, s in sparse), default=0.0)
+        for doc, score in sparse:
+            key = doc.metadata.get("chunk_id") or doc.page_content[:100]
+            norm = score / (max_bm25 + 1e-6)
             if key in combined:
                 combined[key]["score"] += (1 - self.alpha) * norm
             else:
@@ -41,9 +51,30 @@ class HybridRetriever:
             v["doc"] for v in sorted(combined.values(), key=lambda x: -x["score"])[:k]
         ]
 
+    def retrieve_rrf(self, query: str, k: int = 6, rrf_k: int = 60):
+        dense, sparse = self._candidates(query, fetch_k=k * 2)
+        return reciprocal_rank_fusion(
+            [[doc for doc, _ in dense], [doc for doc, _ in sparse]],
+            rrf_k=rrf_k,
+            top_n=k,
+        )
+
+
+def reciprocal_rank_fusion(result_lists, rrf_k: int = 60, top_n: int = 6):
+    """Fuse ranked [Document] lists by rank only (no score normalization).
+    rrf_k = RRF smoothing constant; larger = flatter rank weighting."""
+    scores, docs = {}, {}
+    for results in result_lists:
+        for rank, doc in enumerate(results):
+            did = doc.metadata.get("chunk_id") or doc.page_content[:80]
+            docs[did] = doc
+            scores[did] = scores.get(did, 0.0) + 1.0 / (rrf_k + rank + 1)
+    ranked = sorted(scores, key=scores.get, reverse=True)
+    return [docs[did] for did in ranked[:top_n]]
+
 
 def stratified_retrieve(
-    hybrid_retriever, query: str, card_names: List[str], k_per_card: int = 3
+    hybrid_retriever, query, card_names, k_per_card=3, fusion="rrf", rrf_k=60
 ):
     all_results = []
     for card in card_names:
@@ -57,7 +88,12 @@ def stratified_retrieve(
         card_retriever = HybridRetriever(
             hybrid_retriever.vectorstore, card_chunks, alpha=hybrid_retriever.alpha
         )
-        all_results.extend(card_retriever.retrieve(query, k=k_per_card))
+        if fusion == "rrf":
+            all_results.extend(
+                card_retriever.retrieve_rrf(query, k=k_per_card, rrf_k=rrf_k)
+            )
+        else:
+            all_results.extend(card_retriever.retrieve(query, k=k_per_card))
     return all_results
 
 
@@ -89,7 +125,7 @@ def build_hybrid_retriever(vectorstore, alpha: float = 0.5) -> "HybridRetriever"
     return HybridRetriever(vectorstore, load_all_chunks(vectorstore), alpha=alpha)
 
 
-def as_runnable(retriever, k: int = 6) -> RunnableLambda:
-    """Wrap a HybridRetriever's .retrieve so it drops into build_card_rag_chain
-    exactly like a normal LangChain retriever (the chain pipes a query string in)."""
+def as_runnable(retriever, k: int = 6, fusion: str = "rrf", rrf_k: int = 60):
+    if fusion == "rrf":
+        return RunnableLambda(lambda q: retriever.retrieve_rrf(q, k=k, rrf_k=rrf_k))
     return RunnableLambda(lambda q: retriever.retrieve(q, k=k))

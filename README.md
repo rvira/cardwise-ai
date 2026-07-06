@@ -217,6 +217,29 @@ A few choices that were made deliberately, with the failure mode they avoid:
 - **Indian-card corpus (SBI / Axis / HDFC), not US cards.** The official US card PDFs omit
   reward-earning rates; the Indian reward-T&C PDFs actually contain them — so the quality gate
   has something concrete to verify and the assistant can answer rate questions at all.
+- **Reciprocal Rank Fusion to merge the two legs, not a weighted score sum.** BM25
+  scores and cosine similarities live on different, incomparable scales, so blending
+  them requires normalizing — and min-max normalization is unstable: one outlier
+  document with a huge BM25 score squashes every other result. RRF sidesteps this by
+  fusing on **rank position only** (`score(d) = Σ 1/(rrf_k + rank)`), so no
+  normalization is needed and there's no `alpha` to hand-tune — just `rrf_k`, one
+  interpretable knob (smaller = top ranks dominate, larger = flatter). The
+  weighted-sum path is kept behind `fusion="weighted"` in
+  [retriever.py](src/retrieval/retriever.py) for comparison, but RRF is the default.
+
+### Vector store: Chroma, for now
+
+**Chroma** is the right choice at this stage: zero-ops, local persistence, no network
+  hop in dev, and a corpus well under 100k chunks — so retrieval *quality* (fusion,
+  stratification, eval), not indexing infrastructure, is the actual bottleneck. Its
+  default flat/HNSW index is more than adequate at this scale.
+
+**Migrate to a managed store (Pinecone / Weaviate) when** the corpus exceeds ~500k
+  chunks, we need multi-tenant isolation, or we need managed HNSW with replication for
+  uptime. At that point the win is **operational** — a managed index and horizontal
+  scale — not better recall. Swapping is low-risk because retrieval sits behind the
+  single `HybridRetriever` interface, so only the store-construction layer changes.
+
 
 ---
 
