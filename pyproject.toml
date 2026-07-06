@@ -1,0 +1,7 @@
+[tool.ruff.lint.per-file-ignores]
+# These modules intentionally run setup (load_dotenv, sys.path, module stubs,
+# Streamlit secrets bridge) before importing heavy dependencies, so E402
+# (module-level import not at top of file) is expected and allowed here.
+"app.py" = ["E402"]
+"src/evaluation/*.py" = ["E402"]
+"src/scripts/*.py" = ["E402"]

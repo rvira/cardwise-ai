@@ -4,12 +4,14 @@ messages — never a raw provider error or stack trace reaching the user.
 No API/Streamlit needed; the mapping lives in src.rag.errors precisely so it can
 be tested in isolation.
 """
+
 import pytest
 
 from src.rag.errors import GENERIC, MISCONFIGURED, RATE_LIMITED, friendly_error
 
 
 # --- rate-limit / quota → "service is busy" ----------------------------------
+
 
 @pytest.mark.parametrize(
     "message",
@@ -24,6 +26,7 @@ def test_rate_limit_errors_map_to_rate_limited(message):
 
 
 # --- auth / key / permissions → "isn't configured correctly" -----------------
+
 
 @pytest.mark.parametrize(
     "message",
@@ -42,17 +45,24 @@ def test_auth_errors_map_to_misconfigured(message):
 
 # --- the real bug: the deployed GoogleGenerativeAIError must not leak ---------
 
+
 def test_invalid_key_does_not_leak_provider_details():
     # The exact failure class from the Streamlit Cloud traceback.
     ex = Exception("GoogleGenerativeAIError: API key not valid (API_KEY_INVALID)")
     result = friendly_error(ex)
     assert result == MISCONFIGURED
     # Nothing provider-specific or key-related escapes to the client.
-    for leak in ("GoogleGenerativeAI", "API_KEY_INVALID", "Traceback", "api key not valid"):
+    for leak in (
+        "GoogleGenerativeAI",
+        "API_KEY_INVALID",
+        "Traceback",
+        "api key not valid",
+    ):
         assert leak not in result
 
 
 # --- anything else → generic fallback ----------------------------------------
+
 
 @pytest.mark.parametrize(
     "message",

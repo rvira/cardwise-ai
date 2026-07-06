@@ -8,6 +8,7 @@ task list (not a vague "improve later"):
   - decimal multipliers ("1.5x")                        → captured as a fragment
   - fragment false-positives ("000 x" from "₹2,000 x")  → mid-number match
 """
+
 import os
 import re
 import sys

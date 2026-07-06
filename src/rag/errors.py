@@ -7,8 +7,12 @@ returns only what is safe to show a client — no stack trace, no provider
 internals, no secrets.
 """
 
-RATE_LIMITED = "⚠️ The service is busy (rate limit reached). Please try again in a minute."
-MISCONFIGURED = "⚠️ The card service isn't configured correctly right now. Please try again later."
+RATE_LIMITED = (
+    "⚠️ The service is busy (rate limit reached). Please try again in a minute."
+)
+MISCONFIGURED = (
+    "⚠️ The card service isn't configured correctly right now. Please try again later."
+)
 GENERIC = "⚠️ Something went wrong answering that. Please try again."
 
 _RATE_LIMIT_MARKERS = ("resource_exhausted", "429", "quota")

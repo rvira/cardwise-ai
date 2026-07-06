@@ -4,6 +4,7 @@ The gate's whole job is to *fail closed*: a PDF that mentions rewards in a
 disclaimer but carries no concrete earning rate must NOT be embedded. These
 tests pin that behaviour so a future loader change can't silently weaken it.
 """
+
 import pytest
 
 from src.ingestion.loader import CardDocument, find_rates, quality_check
@@ -22,6 +23,7 @@ def _doc(raw_text: str) -> CardDocument:
 
 
 # --- find_rates: detects a concrete number+unit, not just the word "reward" ---
+
 
 @pytest.mark.parametrize(
     "text",
@@ -49,6 +51,7 @@ def test_find_rates_input_is_length_capped():
 
 
 # --- quality_check: the pass/fail contract -----------------------------------
+
 
 def test_quality_check_passes_with_chars_and_rate():
     doc = _doc("Axis ACE gives 2% cashback. " + ("filler text " * 200))

@@ -12,7 +12,9 @@ class RetryingEmbeddings(Embeddings):
     burst, which can trip the Gemini per-minute quota; backing off lets the run
     recover instead of crashing."""
 
-    def __init__(self, inner: Embeddings, max_retries: int = 5, base_delay: float = 2.0):
+    def __init__(
+        self, inner: Embeddings, max_retries: int = 5, base_delay: float = 2.0
+    ):
         self._inner = inner
         self._max_retries = max_retries
         self._base_delay = base_delay
@@ -27,7 +29,9 @@ class RetryingEmbeddings(Embeddings):
                 is_rate_limit = "RESOURCE_EXHAUSTED" in msg or "429" in msg
                 if not is_rate_limit or attempt == self._max_retries - 1:
                     raise
-                print(f"  rate-limited, backing off {delay:.0f}s (attempt {attempt + 1})")
+                print(
+                    f"  rate-limited, backing off {delay:.0f}s (attempt {attempt + 1})"
+                )
                 time.sleep(delay)
                 delay *= 2
 

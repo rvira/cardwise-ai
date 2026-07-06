@@ -33,7 +33,7 @@ def load_card_pdf(pdf_path, card_name, card_id, issuer, card_type, annual_fee):
     pages = []
     for i, page in enumerate(doc):
         text = page.get_text("text", sort=True)  # sort=True preserves reading order
-        pages.append(f"[PAGE {i+1}]\n{text}")
+        pages.append(f"[PAGE {i + 1}]\n{text}")
     return CardDocument(
         card_name=card_name,
         card_id=card_id,

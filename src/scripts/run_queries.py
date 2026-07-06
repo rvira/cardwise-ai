@@ -4,6 +4,7 @@
 Prerequisite: build the store first with `python -m src.scripts.ingest_all`.
 Run from the project root:  python -m src.scripts.run_queries
 """
+
 from dotenv import load_dotenv
 
 # Load GOOGLE_API_KEY from .env before any Gemini client is built — never hardcoded.

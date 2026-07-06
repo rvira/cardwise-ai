@@ -5,6 +5,7 @@ checked against the source docs (Week 3), every numeric claim in it must be
 reliably extracted. These tests pin which shapes are caught today and document
 the known gaps (words like "five percent") as explicit TODOs, not surprises.
 """
+
 import pytest
 
 from src.evaluation.numeric_validator import extract_numeric_claims

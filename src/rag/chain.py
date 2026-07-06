@@ -22,7 +22,7 @@ def format_with_citations(docs):
     expects. Shared by the full chain and by callers that retrieve separately
     (e.g. the UI, which also wants the raw docs to display)."""
     return "\n\n".join(
-        f"[Source {i+1} | {d.metadata.get('card_name','?')}{_page_label(d)}]\n{d.page_content}"
+        f"[Source {i + 1} | {d.metadata.get('card_name', '?')}{_page_label(d)}]\n{d.page_content}"
         for i, d in enumerate(docs)
     )
 
@@ -45,10 +45,7 @@ def build_card_rag_chain(vectorstore, retriever=None):
     # hybrid BM25+semantic retriever via retriever.as_runnable) to override.
     if retriever is None:
         retriever = build_default_retriever(vectorstore)
-    return (
-        {
-            "context": retriever | format_with_citations,
-            "question": RunnablePassthrough(),
-        }
-        | build_answer_chain()
-    )
+    return {
+        "context": retriever | format_with_citations,
+        "question": RunnablePassthrough(),
+    } | build_answer_chain()

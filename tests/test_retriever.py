@@ -55,9 +55,9 @@ def test_hybrid_surfaces_exact_value_match():
 
     results = retriever.retrieve("what is the $395 annual fee", k=3)
 
-    assert (
-        "$395" in results[0].page_content
-    ), "exact-value query should rank the $395 chunk first via BM25"
+    assert "$395" in results[0].page_content, (
+        "exact-value query should rank the $395 chunk first via BM25"
+    )
 
 
 def test_hybrid_respects_k():
@@ -101,7 +101,9 @@ def test_rrf_dedups_by_chunk_id_not_object_identity():
 
     c1_hits = [d for d in fused if d.metadata["chunk_id"] == "c1"]
     assert len(c1_hits) == 1, "same chunk_id must appear exactly once"
-    assert fused[0].metadata["chunk_id"] == "c1", "appearing in both lists boosts it first"
+    assert fused[0].metadata["chunk_id"] == "c1", (
+        "appearing in both lists boosts it first"
+    )
 
 
 def test_rrf_respects_top_n():
@@ -117,8 +119,14 @@ def test_rrf_k_constant_changes_ranking():
     top_a = _doc("top of A", "top_a")
     midboth = _doc("middle of both", "midboth")
     list_a = [top_a, _doc("fa1", "fa1"), midboth]
-    list_b = [_doc("fb0", "fb0"), midboth, _doc("fb2", "fb2"),
-              _doc("fb3", "fb3"), _doc("fb4", "fb4"), top_a]
+    list_b = [
+        _doc("fb0", "fb0"),
+        midboth,
+        _doc("fb2", "fb2"),
+        _doc("fb3", "fb3"),
+        _doc("fb4", "fb4"),
+        top_a,
+    ]
 
     small = reciprocal_rank_fusion([list_a, list_b], rrf_k=1, top_n=2)
     large = reciprocal_rank_fusion([list_a, list_b], rrf_k=100, top_n=2)
