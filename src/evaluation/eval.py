@@ -22,7 +22,9 @@ if "langchain_community.chat_models.vertexai" not in _sys.modules:
     _sys.modules["langchain_community.chat_models.vertexai"] = _vertex_stub
 # ---------------------------------------------------------------------------
 
+import json
 import os
+from pathlib import Path
 from statistics import mean
 
 from openai import AsyncOpenAI
@@ -35,6 +37,7 @@ from ragas.metrics.collections import (
     ContextRecall,
 )
 
+from src.evaluation.numeric_validator import numeric_hit
 from src.rag.chain import build_card_rag_chain
 from src.retrieval.retriever import build_default_retriever
 from src.vectorstore.embedder import load_vectorstore
@@ -93,19 +96,42 @@ WEEK1_EVAL_SET = [
     },
 ]
 
-DEFAULT_EVAL_LIMIT = len(WEEK1_EVAL_SET)
+
+def load_gold_set() -> list:
+    """Load the 20-query gold set that lives next to this module."""
+    return json.loads(Path(__file__).with_name("gold_set.json").read_text())
 
 
-def run_baseline_eval(chain, retriever, limit: int = DEFAULT_EVAL_LIMIT) -> dict:
-    """Score the RAG pipeline on WEEK1_EVAL_SET with ragas 0.4.x collections
-    metrics and return the mean of each metric across the evaluated questions.
+def gold_eval_set() -> list:
+    """Adapt the gold set into the SAME {question, ground_truth} shape as
+    WEEK1_EVAL_SET, so run_baseline_eval scores it with identical functions.
+    Carries expected_numeric through for the numeric-exact guard."""
+    return [
+        {
+            "question": g["query"],
+            "ground_truth": g["reference"],
+            "expected_numeric": g.get("expected_numeric"),
+        }
+        for g in load_gold_set()
+    ]
 
-    Only the first ``limit`` questions are evaluated (defaults to all of them);
-    pass a smaller ``limit`` for a quick partial run.
+
+def run_baseline_eval(chain, retriever, eval_set=None, limit: int = None) -> dict:
+    """Score the RAG pipeline with ragas 0.4.x collections metrics and return the
+    mean of each metric across the evaluated questions.
+
+    ``eval_set`` defaults to WEEK1_EVAL_SET; pass ``gold_eval_set()`` to score the
+    20-query gold set with the exact same functions. Only the first ``limit``
+    questions are evaluated (defaults to all of them).
 
     Each metric is scored per-sample; if a metric fails for a sample it is
-    skipped from that metric's mean rather than aborting the whole run.
+    skipped from that metric's mean rather than aborting the whole run. Items that
+    carry ``expected_numeric`` also contribute to a deterministic numeric-exact
+    accuracy via numeric_hit().
     """
+    eval_set = eval_set if eval_set is not None else WEEK1_EVAL_SET
+    if limit is None:
+        limit = len(eval_set)
     faithfulness = Faithfulness(llm=RAGAS_JUDGE)
     answer_relevancy = AnswerRelevancy(llm=RAGAS_JUDGE, embeddings=RAGAS_EMB)
     context_precision = ContextPrecision(llm=RAGAS_JUDGE)
@@ -136,17 +162,15 @@ def run_baseline_eval(chain, retriever, limit: int = DEFAULT_EVAL_LIMIT) -> dict
     # 1) Run the pipeline once per question to capture answer + retrieved context.
     #    Each step makes live API calls and can take a while, so print progress as
     #    we go — a silent terminal looks frozen and invites the user to kill it.
-    eval_set = WEEK1_EVAL_SET[: max(1, limit)]
-    n = len(eval_set)
-    print(
-        f"Evaluating {n}/{len(WEEK1_EVAL_SET)} questions (limit={limit}).", flush=True
-    )
+    items = eval_set[: max(1, limit)]
+    n = len(items)
+    print(f"Evaluating {n}/{len(eval_set)} questions (limit={limit}).", flush=True)
     print(
         f"[1/2] Generating answers + retrieving context for {n} question(s)…",
         flush=True,
     )
     samples = []
-    for i, item in enumerate(eval_set, 1):
+    for i, item in enumerate(items, 1):
         q = item["question"]
         print(f"  • Q{i}/{n}: {q[:60]}…", flush=True)
         samples.append(
@@ -155,6 +179,7 @@ def run_baseline_eval(chain, retriever, limit: int = DEFAULT_EVAL_LIMIT) -> dict
                 "answer": chain.invoke(q),
                 "contexts": [d.page_content for d in retriever.invoke(q)],
                 "ground_truth": item["ground_truth"],
+                "expected_numeric": item.get("expected_numeric"),
             }
         )
 
@@ -177,22 +202,42 @@ def run_baseline_eval(chain, retriever, limit: int = DEFAULT_EVAL_LIMIT) -> dict
         name: (mean(vals) if vals else None) for name, vals in per_metric_values.items()
     }
 
+    # Deterministic numeric-exact guard: only items carrying expected_numeric
+    # contribute (numeric_hit returns None otherwise, and is filtered out).
+    num_flags = [
+        hit
+        for s in samples
+        if (hit := numeric_hit(s["contexts"], s.get("expected_numeric"))) is not None
+    ]
+    scores["numeric_exact_acc"] = mean(num_flags) if num_flags else None
+
     print("=== EVAL SCORES ===")
-    for name, value in scores.items():
-        n = len(per_metric_values[name])
+    for name, vals in per_metric_values.items():
+        value = scores[name]
         printed = f"{value:.3f}" if value is not None else "n/a (all samples failed)"
-        print(f"  {name:<18}: {printed}  (n={n}/{len(samples)})")
+        print(f"  {name:<18}: {printed}  (n={len(vals)}/{len(samples)})")
+    na = scores["numeric_exact_acc"]
+    na_printed = f"{na:.3f}" if na is not None else "n/a (no numeric items)"
+    print(
+        f"  {'numeric_exact_acc':<18}: {na_printed}  (n={len(num_flags)}/{len(samples)})"
+    )
     return scores
 
 
 if __name__ == "__main__":
-    # Runnable entrypoint. Pick the retrieval method to evaluate (default MMR):
-    #   python -m src.evaluation.eval           # MMR
-    #   python -m src.evaluation.eval hybrid    # BM25 + semantic hybrid
+    # Runnable entrypoint. Pick the retrieval method and dataset (default MMR + week1):
+    #   python -m src.evaluation.eval                 # MMR,    week1 (5 Q)
+    #   python -m src.evaluation.eval hybrid          # hybrid, week1 (5 Q)
+    #   python -m src.evaluation.eval hybrid gold     # hybrid, 20-query gold set
     import sys
 
-    mode = sys.argv[1].lower() if len(sys.argv) > 1 else "mmr"
-    print(f"Retrieval mode: {mode}", flush=True)
+    args = [a.lower() for a in sys.argv[1:]]
+    mode = "hybrid" if "hybrid" in args else "mmr"
+    use_gold = "gold" in args
+    print(
+        f"Retrieval mode: {mode} | dataset: {'gold (20)' if use_gold else 'week1 (5)'}",
+        flush=True,
+    )
 
     _vs = load_vectorstore()
     if mode == "hybrid":
@@ -204,4 +249,6 @@ if __name__ == "__main__":
     # The chain and the eval share one retriever instance, so the contexts scored
     # here are exactly what the chain sees (no config to keep in sync).
     _chain = build_card_rag_chain(_vs, retriever=_retriever)
-    run_baseline_eval(_chain, _retriever)
+    run_baseline_eval(
+        _chain, _retriever, eval_set=gold_eval_set() if use_gold else None
+    )

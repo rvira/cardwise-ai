@@ -1,5 +1,7 @@
-# src/evaluation/numeric_validator.py — STUB, full implementation Week 3
-"""Numeric-claim guardrail for CardWise answers."""
+# src/evaluation/numeric_validator.py
+"""Numeric guardrail for CardWise: claim extraction (answer-time) plus the
+eval-time numeric-hit check used by the gold-set evaluation."""
+
 import re
 
 # Patterns are deliberately simple and linear (no nested quantifiers); input is
@@ -21,6 +23,29 @@ def extract_numeric_claims(text: str) -> list:
     for pattern in _PATTERNS:
         claims.extend(re.findall(pattern, capped, flags=re.IGNORECASE))
     return claims
+
+
+def _norm(text: str) -> str:
+    """Lower-case and strip currency symbols, but KEEP commas and % so that
+    '10,000' stays distinct from '1,000' and '4%' matches exactly."""
+    return " ".join(
+        text.lower().replace("rs.", "").replace("₹", "").replace("$", "").split()
+    )
+
+
+def numeric_hit(contexts: list, expected_values: list) -> bool | None:
+    """Deterministic 'zero fabricated fees' guard for the gold-set eval.
+
+    Returns True iff every expected numeric token (e.g. '4%', '250', '10,000')
+    appears somewhere in the retrieved context — i.e. the number the answer needs
+    was actually retrieved. Returns None for non-numeric questions (no expected
+    values), so they are excluded from numeric-exact accuracy rather than counted
+    as failures.
+    """
+    if not expected_values:
+        return None
+    blob = _norm(" ".join(contexts))
+    return all(_norm(v) in blob for v in expected_values)
 
 
 if __name__ == "__main__":
