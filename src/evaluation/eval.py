@@ -225,27 +225,64 @@ def run_baseline_eval(chain, retriever, eval_set=None, limit: int = None) -> dic
 
 
 if __name__ == "__main__":
-    # Runnable entrypoint. Pick the retrieval method and dataset (default MMR + week1):
-    #   python -m src.evaluation.eval                 # MMR,    week1 (5 Q)
-    #   python -m src.evaluation.eval hybrid          # hybrid, week1 (5 Q)
-    #   python -m src.evaluation.eval hybrid gold     # hybrid, 20-query gold set
+    # Runnable entrypoint. Pick the retrieval method, dataset, and (for hybrid)
+    # whether to stratify across all cards:
+    #   python -m src.evaluation.eval                        # MMR,    week1 (5 Q)
+    #   python -m src.evaluation.eval hybrid                 # hybrid, week1 (5 Q)
+    #   python -m src.evaluation.eval hybrid gold            # hybrid flat, gold (20 Q)
+    #   python -m src.evaluation.eval hybrid gold strat      # hybrid stratified, gold (20 Q)
+    #   python -m src.evaluation.eval dense gold             # dense-only baseline, gold (20 Q)
+    #   python -m src.evaluation.eval hybrid gold k=10       # override chunk budget (default 6)
     import sys
 
     args = [a.lower() for a in sys.argv[1:]]
-    mode = "hybrid" if "hybrid" in args else "mmr"
+    if "hybrid" in args:
+        mode = "hybrid"
+    elif "dense" in args:
+        mode = "dense"
+    else:
+        mode = "mmr"
     use_gold = "gold" in args
+    use_strat = "strat" in args
+    # Optional total-chunk budget: `k=10`. Defaults to 6.
+    k = next((int(a.split("=", 1)[1]) for a in args if a.startswith("k=")), 6)
+    if mode == "hybrid" and use_strat:
+        variant = "hybrid-stratified"
+    elif mode == "dense":
+        variant = "dense-only"
+    else:
+        variant = mode
     print(
-        f"Retrieval mode: {mode} | dataset: {'gold (20)' if use_gold else 'week1 (5)'}",
+        f"Retrieval: {variant} | k={k} | dataset: {'gold (20)' if use_gold else 'week1 (5)'}",
         flush=True,
     )
 
     _vs = load_vectorstore()
     if mode == "hybrid":
-        from src.retrieval.retriever import as_runnable, build_hybrid_retriever
+        from src.retrieval.retriever import (
+            as_runnable,
+            as_stratified_runnable,
+            build_hybrid_retriever,
+        )
 
-        _retriever = as_runnable(build_hybrid_retriever(_vs))
+        _hybrid = build_hybrid_retriever(_vs)
+        if use_strat:
+            from src.ingestion.loader import CARDS
+
+            _card_names = [c["card_name"] for c in CARDS]
+            # Split the total budget across cards (>=1 chunk per card).
+            _per_card = max(1, k // len(_card_names))
+            _retriever = as_stratified_runnable(
+                _hybrid, _card_names, k_per_card=_per_card
+            )
+        else:
+            _retriever = as_runnable(_hybrid, k=k)
+    elif mode == "dense":
+        from src.retrieval.retriever import build_dense_retriever
+
+        _retriever = build_dense_retriever(_vs, k=k)
     else:
-        _retriever = build_default_retriever(_vs)
+        _retriever = build_default_retriever(_vs, k=k)
     # The chain and the eval share one retriever instance, so the contexts scored
     # here are exactly what the chain sees (no config to keep in sync).
     _chain = build_card_rag_chain(_vs, retriever=_retriever)

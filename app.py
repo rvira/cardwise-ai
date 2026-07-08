@@ -95,7 +95,8 @@ def retrieve_docs(question: str, mode: str, cards):
         hybrid = get_hybrid_retriever()
         if cards:
             return stratified_retrieve(hybrid, question, cards)
-        return hybrid.retrieve(question)
+        # RRF at k=10 — the config validated in the gold-set eval (recall 0.883).
+        return hybrid.retrieve_rrf(question, k=10)
     # MMR over the store, with an optional Chroma metadata filter on card_name.
     overrides = {"filter": {"card_name": {"$in": cards}}} if cards else {}
     return build_default_retriever(get_vectorstore(), **overrides).invoke(question)

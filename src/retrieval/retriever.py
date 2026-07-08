@@ -109,6 +109,14 @@ def build_default_retriever(vectorstore, **overrides):
     return vectorstore.as_retriever(search_type="mmr", search_kwargs=search_kwargs)
 
 
+def build_dense_retriever(vectorstore, k: int = 6):
+    """Plain semantic similarity retriever — NO MMR, NO BM25. This is the
+    dense-only 'before' baseline for the before/after benchmark (2.6): retrieval
+    by embedding meaning alone, which is exactly what hybrid+BM25 improves on for
+    exact-value queries."""
+    return vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": k})
+
+
 def load_all_chunks(vectorstore) -> List[Document]:
     """Pull every stored chunk back out of Chroma as LangChain Documents.
     BM25 needs the raw text, which already lives in the vector store after ingest."""
@@ -125,7 +133,19 @@ def build_hybrid_retriever(vectorstore, alpha: float = 0.5) -> "HybridRetriever"
     return HybridRetriever(vectorstore, load_all_chunks(vectorstore), alpha=alpha)
 
 
-def as_runnable(retriever, k: int = 6, fusion: str = "rrf", rrf_k: int = 60):
+def as_runnable(retriever, k: int = 10, fusion: str = "rrf", rrf_k: int = 60):
     if fusion == "rrf":
         return RunnableLambda(lambda q: retriever.retrieve_rrf(q, k=k, rrf_k=rrf_k))
     return RunnableLambda(lambda q: retriever.retrieve(q, k=k))
+
+
+def as_stratified_runnable(hybrid_retriever, card_names, k_per_card: int = 2, rrf_k: int = 60):
+    """Wrap stratified_retrieve as a query->docs runnable. Guarantees every card
+    is represented (k_per_card chunks each) so multi-card comparison queries don't
+    under-cover — the fix for low recall on 'which card for X?' questions. With
+    3 cards and k_per_card=2 the budget matches the flat k=6 path."""
+    return RunnableLambda(
+        lambda q: stratified_retrieve(
+            hybrid_retriever, q, card_names, k_per_card=k_per_card, rrf_k=rrf_k
+        )
+    )
