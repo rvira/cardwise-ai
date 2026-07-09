@@ -139,7 +139,9 @@ def as_runnable(retriever, k: int = 10, fusion: str = "rrf", rrf_k: int = 60):
     return RunnableLambda(lambda q: retriever.retrieve(q, k=k))
 
 
-def as_stratified_runnable(hybrid_retriever, card_names, k_per_card: int = 2, rrf_k: int = 60):
+def as_stratified_runnable(
+    hybrid_retriever, card_names, k_per_card: int = 2, rrf_k: int = 60
+):
     """Wrap stratified_retrieve as a query->docs runnable. Guarantees every card
     is represented (k_per_card chunks each) so multi-card comparison queries don't
     under-cover — the fix for low recall on 'which card for X?' questions. With
