@@ -15,4 +15,4 @@ chroma_db/
 .streamlit/secrets.toml
 
 # Local working-instructions doc for Claude (not part of the project)
-skills.md
+CLAUDE.md

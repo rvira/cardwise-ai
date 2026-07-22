@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 # Load GOOGLE_API_KEY from .env before any Gemini client is built — never hardcoded.
 load_dotenv()
 
+import json
 import os
 from string import Template
 
@@ -53,6 +54,7 @@ EXAMPLE_QUESTIONS = [
 RETRIEVAL_MODES = {
     "MMR (semantic + diversity)": "mmr",
     "Hybrid (BM25 + semantic)": "hybrid",
+    "Agent (tools: search + rewards calc)": "agent",
 }
 
 
@@ -129,6 +131,82 @@ def render_streaming_answer(question: str, mode: str, cards) -> str:
         message = friendly_error(ex)
         placeholder.markdown(message)
         return message
+
+
+def build_trace(messages, text_of):
+    """Flatten the agent's message list into a small, JSON-serialisable trace so it
+    can be rendered now and re-rendered on chat replay (stored in session_state).
+    `text_of` extracts plain text from a message whose content may be a string or a
+    list of content blocks (Gemini 2.5)."""
+    steps = []
+    for m in messages:
+        tool_calls = getattr(m, "tool_calls", None) or []
+        steps.append(
+            {
+                "kind": type(m).__name__,
+                "content": text_of(m),
+                "tool_calls": [
+                    {"name": c["name"], "args": c["args"]} for c in tool_calls
+                ],
+            }
+        )
+    return steps
+
+
+def render_trace(trace):
+    """Show the agent's tool-call trace in a collapsed expander (a ChatGPT/Claude-
+    style 'thinking' disclosure). Tool args/results are rendered with st.code and
+    the answer with plain st.markdown (unsafe_allow_html stays off) — so untrusted
+    tool/model output is shown as text, never executed as HTML."""
+    if not trace:
+        return
+    n_calls = sum(len(step["tool_calls"]) for step in trace)
+    label = f"🛠️ Tool-call trace — {n_calls} tool call(s) over {len(trace)} steps"
+    with st.expander(label, expanded=False):
+        for step in trace:
+            kind = step["kind"]
+            if kind == "HumanMessage":
+                st.markdown("**🧑 Question**")
+                st.markdown(step["content"])
+            elif step["tool_calls"]:
+                for call in step["tool_calls"]:
+                    st.markdown(f"**🤖 decides to call** `{call['name']}`")
+                    st.code(json.dumps(call["args"], indent=2), language="json")
+            elif kind == "ToolMessage":
+                st.markdown("**🔧 tool result**")
+                st.code((step["content"] or "(empty)")[:2000], language="text")
+            elif kind == "AIMessage":
+                st.markdown("**🤖 final answer**")
+                st.markdown(step["content"])
+
+
+def render_agent_answer(question: str):
+    """Agent mode: run the LangGraph agent (an LLM that picks between doc search and
+    a deterministic rewards calculator), show its tool-call trace in a collapsible
+    panel, then the answer. Returns (answer_text, trace) so both persist in history.
+    The agent searches all cards, so the sidebar card filter does not apply here."""
+    try:
+        from src.agent.graph import ask, message_text
+    except ImportError:
+        msg = (
+            "⚠️ The agent isn't available — install its dependency with "
+            "`pip install langgraph` and restart the app."
+        )
+        st.markdown(msg)
+        return msg, None
+    try:
+        with st.spinner("Agent is working (choosing tools, searching, calculating)…"):
+            result = ask(question)
+        messages = result["messages"]
+        answer = message_text(messages[-1])
+        trace = build_trace(messages, message_text)
+    except Exception as ex:
+        # Log full details server-side; show the client only a generic message.
+        print(f"[agent_error] {type(ex).__name__}: {ex}")
+        answer, trace = friendly_error(ex), None
+    render_trace(trace)
+    st.markdown(answer)
+    return answer, trace
 
 
 st.set_page_config(
@@ -306,6 +384,14 @@ _STYLE = Template(
         background: $chip;
         border: 1px solid $border;
       }
+
+      /* Tool-call trace expander: drop the default border (and its box-shadow
+         edge) so the collapsible blends into the chat bubble. */
+      [data-testid="stExpander"],
+      [data-testid="stExpander"] details {
+        border: none !important;
+        box-shadow: none !important;
+      }
     </style>
     """
 )
@@ -340,7 +426,9 @@ with st.sidebar:
         index=0,
         help=(
             "MMR: semantic search with diversity (default). "
-            "Hybrid: BM25 keyword + semantic — better for exact values like fees/rates."
+            "Hybrid: BM25 keyword + semantic — better for exact values like fees/rates. "
+            "Agent: an LLM that chooses tools (doc search + a rewards calculator) and "
+            "shows its tool-call trace; searches all cards (ignores the card filter)."
         ),
     )
     retrieval_mode = RETRIEVAL_MODES[mode_label]
@@ -379,6 +467,8 @@ if "messages" not in st.session_state:
 # Replay prior conversation.
 for m in st.session_state.messages:
     with st.chat_message(m["role"], avatar=AVATARS[m["role"]]):
+        if m.get("trace"):
+            render_trace(m["trace"])
         st.markdown(m["content"])
 
 # Example-question cards (only before the first message, to keep the UI clean).
@@ -398,5 +488,12 @@ if prompt:
     with st.chat_message("user", avatar=AVATARS["user"]):
         st.markdown(prompt)
     with st.chat_message("assistant", avatar=AVATARS["assistant"]):
-        reply = render_streaming_answer(prompt, retrieval_mode, selected_cards)
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+        if retrieval_mode == "agent":
+            reply, trace = render_agent_answer(prompt)
+        else:
+            reply = render_streaming_answer(prompt, retrieval_mode, selected_cards)
+            trace = None
+    message = {"role": "assistant", "content": reply}
+    if trace:
+        message["trace"] = trace
+    st.session_state.messages.append(message)
